@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Unir PDFs en el Frontend</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    #drop-zone {
+      width: 100%;
+      max-width: 400px;
+      margin: 0 auto 20px auto;
+      padding: 40px;
+      border: 3px dashed #ccc;
+      border-radius: 10px;
+      text-align: center;
+      color: #aaa;
+      cursor: pointer;
+    }
+    #drop-zone.dragover {
+      border-color: #333;
+      color: #333;
+    }
+
+    #pdfList {
+      max-width: 400px;
+      margin: 0 auto;
+      padding: 0;
+      list-style: none;
+    }
+
+    #pdfList li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 5px 0;
+      padding: 8px;
+      background-color: #f1f1f1;
+      border-radius: 5px;
+      cursor: move; /* Para sugerir que se puede arrastrar */
+    }
+
+    .file-name {
+      flex: 1;
+      margin: 0 10px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 4px;
+    }
+
+    button {
+      padding: 6px 10px;
+      border: none;
+      border-radius: 4px;
+      background-color: #007bff;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    #mergeBtn {
+      margin-top: 20px;
+      display: block;
+      margin-left: auto;
+      margin-right: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Fusionar PDFs en el Navegador</h1>
+
+  <div id="drop-zone">Arrastra aquí tus PDFs o haz click para seleccionar</div>
+  <input type="file" id="file-input" multiple accept=".pdf" style="display: none;" />
+
+  <ul id="pdfList"></ul>
+
+  <button id="mergeBtn">Unir PDFs</button>
+
+  <!-- Librería pdf-lib desde CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"
+          integrity="sha512-VuNs0r9yVi9uSStyo4/bA329gaJGdkLvfaTlYNo+Tjl1DA2zBj3R66CO5UkoUITnHEcyzye7Ig0VDHo7/f+9tw=="
+          crossorigin="anonymous"
+          referrerpolicy="no-referrer">
+  </script>
+
+  <script>
+    /********************************************************************
+     * Variables y referencias a elementos HTML
+     ********************************************************************/
+    const dropZone   = document.getElementById("drop-zone");
+    const fileInput  = document.getElementById("file-input");
+    const pdfList    = document.getElementById("pdfList");
+    const mergeBtn   = document.getElementById("mergeBtn");
+
+    // Array donde almacenaremos los objetos File de los PDFs
+    let pdfFiles = [];
+
+    /********************************************************************
+     * Eventos para arrastrar y soltar (Drag & Drop)
+     ********************************************************************/
+    // Evitar el comportamiento por defecto de arrastrar y soltar
+    ["dragenter", "dragover", "dragleave", "drop"].forEach(eventName => {
+      dropZone.addEventListener(eventName, (e) => e.preventDefault());
+      dropZone.addEventListener(eventName, (e) => e.stopPropagation());
+    });
+
+    // Cuando el archivo está sobre la zona, cambiamos estilo
+    ["dragenter", "dragover"].forEach(eventName => {
+      dropZone.addEventListener(eventName, () => dropZone.classList.add("dragover"));
+    });
+
+    // Cuando el archivo sale de la zona, revertimos estilo
+    ["dragleave", "drop"].forEach(eventName => {
+      dropZone.addEventListener(eventName, () => dropZone.classList.remove("dragover"));
+    });
+
+    // Soltar archivos
+    dropZone.addEventListener("drop", (e) => {
+      const droppedFiles = Array.from(e.dataTransfer.files).filter(file => file.type === "application/pdf");
+      addPDFFiles(droppedFiles);
+    });
+
+    // Al hacer click en la zona, abrimos el diálogo
+    dropZone.addEventListener("click", () => fileInput.click());
+
+    // Cuando se seleccionan archivos desde el input
+    fileInput.addEventListener("change", (e) => {
+      const selectedFiles = Array.from(e.target.files).filter(file => file.type === "application/pdf");
+      addPDFFiles(selectedFiles);
+      fileInput.value = ""; // Limpiar para que se pueda volver a seleccionar
+    });
+
+    /********************************************************************
+     * Función para agregar los archivos PDF al listado y mostrarlos en la UI
+     ********************************************************************/
+    function addPDFFiles(files) {
+      // Agregamos al array principal
+      pdfFiles = pdfFiles.concat(files);
+      renderFileList();
+    }
+
+    /********************************************************************
+     * Renderizar la lista de archivos en el DOM
+     ********************************************************************/
+    function renderFileList() {
+      pdfList.innerHTML = "";
+
+      pdfFiles.forEach((file, index) => {
+        const li = document.createElement("li");
+        li.draggable = true;
+        li.dataset.index = index;
+
+        // Label con el nombre del archivo
+        const fileName = document.createElement("span");
+        fileName.classList.add("file-name");
+        fileName.textContent = file.name;
+
+        // Botones de subir/bajar
+        const upBtn = document.createElement("button");
+        upBtn.textContent = "↑";
+        upBtn.addEventListener("click", () => moveFileUp(index));
+
+        const downBtn = document.createElement("button");
+        downBtn.textContent = "↓";
+        downBtn.addEventListener("click", () => moveFileDown(index));
+
+        const btnGroup = document.createElement("div");
+        btnGroup.classList.add("btn-group");
+        btnGroup.appendChild(upBtn);
+        btnGroup.appendChild(downBtn);
+
+        li.appendChild(fileName);
+        li.appendChild(btnGroup);
+
+        // Eventos para drag & drop en cada item
+        li.addEventListener("dragstart", handleDragStart);
+        li.addEventListener("dragover", handleDragOver);
+        li.addEventListener("drop", handleDrop);
+
+        pdfList.appendChild(li);
+      });
+    }
+
+    /********************************************************************
+     * Funciones para reordenar con botones ↑ y ↓
+     ********************************************************************/
+    function moveFileUp(index) {
+      if (index === 0) return; // Ya está en el tope
+      const temp = pdfFiles[index];
+      pdfFiles[index] = pdfFiles[index - 1];
+      pdfFiles[index - 1] = temp;
+      renderFileList();
+    }
+
+    function moveFileDown(index) {
+      if (index === pdfFiles.length - 1) return; // Ya está en el final
+      const temp = pdfFiles[index];
+      pdfFiles[index] = pdfFiles[index + 1];
+      pdfFiles[index + 1] = temp;
+      renderFileList();
+    }
+
+    /********************************************************************
+     * Funciones drag & drop para reordenar la lista
+     ********************************************************************/
+    let draggedItemIndex = null; // Índice del ítem que se arrastra
+
+    function handleDragStart(e) {
+      draggedItemIndex = e.target.dataset.index;
+      e.dataTransfer.effectAllowed = "move";
+    }
+
+    function handleDragOver(e) {
+      e.preventDefault();
+      const li = e.target.closest("li");
+      if (!li) return;
+      // Estilos para indicar que está sobre un ítem
+    }
+
+    function handleDrop(e) {
+      e.preventDefault();
+      const li = e.target.closest("li");
+      if (!li) return;
+
+      const dropIndex = parseInt(li.dataset.index, 10);
+      const draggedIndex = parseInt(draggedItemIndex, 10);
+
+      if (dropIndex === draggedIndex) return;
+
+      // Reordenamos el array
+      const draggedFile = pdfFiles[draggedIndex];
+      pdfFiles.splice(draggedIndex, 1);
+      pdfFiles.splice(dropIndex, 0, draggedFile);
+
+      renderFileList();
+    }
+
+    /********************************************************************
+     * Evento para fusionar los PDFs
+     ********************************************************************/
+    mergeBtn.addEventListener("click", async () => {
+      if (pdfFiles.length < 2) {
+        alert("Por favor, selecciona al menos 2 archivos PDF para fusionar.");
+        return;
+      }
+
+      try {
+        // Creamos un nuevo documento PDF con pdf-lib
+        const { PDFDocument } = PDFLib;
+        const mergedPdf = await PDFDocument.create();
+
+        // Iteramos sobre los archivos en el orden actual
+        for (let i = 0; i < pdfFiles.length; i++) {
+          const arrayBuffer = await pdfFiles[i].arrayBuffer();
+          const pdf = await PDFDocument.load(arrayBuffer);
+
+          // Copiamos todas las páginas de este PDF al mergedPdf
+          const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+          copiedPages.forEach((page) => mergedPdf.addPage(page));
+        }
+
+        // Exportamos el PDF fusionado como un Blob
+        const mergedPdfBytes = await mergedPdf.save();
+        const blob = new Blob([mergedPdfBytes], { type: "application/pdf" });
+
+        // Creamos un enlace de descarga
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "documento_fusionado.pdf";
+        link.click();
+
+        // Liberamos el objeto URL
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error("Error al fusionar PDFs:", error);
+        alert("Ocurrió un error al fusionar los PDFs.");
+      }
+    });
+  </script>
+</body>
+</html>
